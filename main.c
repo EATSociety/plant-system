@@ -7,14 +7,15 @@
 #include "tm4c123gh6pm.h"
 #include <stdint.h>
 #include "PLL.h"
-#define LIGHT	(*((volatile unsigned long *)0x40025038))
-#define SOIL (*((volatile unsigned long*)0x40007004))
-#define OUTPUT (*((volatile unsigned long*)0x40007200))
+#define LIGHT	 (*((volatile unsigned long*)0x40025038))
+#define SOIL 	 (*((volatile unsigned long*)0x40007004))
+#define PUMP (*((volatile unsigned long*)0x40006200))
 #define SWITCH (*((volatile unsigned long *)0x40025004))
 
 void PortF_Init(void);
 void PortD_Init(void);
 void Delay(void);
+void PortC_Init(void);
 
 //Analog to digital converter (ADC)
 //This only works for 1 ADC
@@ -100,9 +101,10 @@ STyp FSM[3]={		 // Soil, Water
 //										00       01      10       		11
  {0, 500, 0x08, {fill_tank, idle, fill_tank, watering_plant}}, //idle
  {0, 200, 0x02, {fill_tank, idle, fill_tank, watering_plant}}, //fill tank
- {1, 600, 0x04, {fill_tank, idle, fill_tank, watering_plant}}
+ {0x80, 600, 0x04, {fill_tank, idle, fill_tank, watering_plant}}
 }; //water plant
  
+
 
 unsigned long value,value2;
 unsigned long WATER;
@@ -119,13 +121,16 @@ int main(void) {
 	PortF_Init();
 	//LIGHT = 0x06;
 	PortD_Init();
+	PortC_Init();
 	
-	
+	//OUTPUT = 1;
+	//OUTPUT = 0x1;
+	//GPIO_PORTC_DATA_R = 0x80;
 	while (1) {
+		//GPIO_PORTD_DATA_R = 0x40;
 		//Obtain the ADC value. (0 - 3.3 V to 0 - 4095 ). Note if there are multiple channels, we call this function again
 		//Because we have 2 channels, we call ADC0_In() two times and we should get different ADC values.
 		WATER = ADC0_In();
-		//OUTPUT = 1;
 		//value2 = ADC0_In();
 		
 		// Check Water
@@ -133,10 +138,12 @@ int main(void) {
 		else if(WATER >= 0x100 && SOIL == 1){T =  3;}
 		else if (WATER< 0x100 && SOIL == 0){T = 2;}
 		else {T = 0;}
+
 		
 		LIGHT = FSM[S].Led;
-		OUTPUT = FSM[S].Out;
+		PUMP = FSM[S].Out;
 		S = FSM[S].Next[T];
+
 		Delay();
 		
 		//if(SWITCH == 0){LIGHT = 0xC;}
@@ -163,13 +170,24 @@ void PortF_Init(void){ volatile unsigned long delay;
 void PortD_Init(void){
 	SYSCTL_RCGCGPIO_R |= 0x08; // 1) activate port D
                                     // 2) no need to unlock PD3-0
-  GPIO_PORTD_AMSEL_R &= ~0x81;      // 3) disable analog functionality on PD3-0
-  GPIO_PORTD_PCTL_R &= ~0xF000000F; // 4) GPIO configure PD3-0 as GPIO
-  GPIO_PORTD_DIR_R &= ~0x01;   // 5) make PD3-0 out
-	GPIO_PORTD_DIR_R |= 0x80; // D1 output
-  GPIO_PORTD_AFSEL_R &= ~0x81;// 6) disable alt funct on PD3-0
-  GPIO_PORTD_DR8R_R |= 0x81;  // enable 8 mA drive
-  GPIO_PORTD_DEN_R |= 0x81;   // 7) enable digital I/O on PD3-0 
+  GPIO_PORTD_AMSEL_R &= ~0x41;      // 3) disable analog functionality on PD3-0
+  GPIO_PORTD_PCTL_R &= ~0x0F00000F; // 4) GPIO configure PD3-0 as GPIO
+  GPIO_PORTD_DIR_R &= ~0x01;   // 5)
+	GPIO_PORTD_DIR_R |= 0x40; // D0 input, D7 output
+  GPIO_PORTD_AFSEL_R &= ~0x41;// 6) disable alt funct on PD3-0
+  //GPIO_PORTD_DR8R_R |= 0x41;  // enable 8 mA drive
+  GPIO_PORTD_DEN_R |= 0x41;   // 7) enable digital I/O on PD3-0 
+}
+
+void PortC_Init(void){
+	SYSCTL_RCGCGPIO_R |= 0x04; // 1) activate port D
+                                    // 2) no need to unlock PD3-0
+  GPIO_PORTC_AMSEL_R &= ~0x80;      // 3) disable analog functionality on PD3-0
+  GPIO_PORTC_PCTL_R &= ~0xF0000000; // 4) GPIO configure PD3-0 as GPIO
+	GPIO_PORTC_DIR_R |= 0x80; // D0 input, D7 output
+  GPIO_PORTC_AFSEL_R &= ~0x80;// 6) disable alt funct on PD3-0
+  //GPIO_PORTD_DR8R_R |= 0x80;  // enable 8 mA drive
+  GPIO_PORTC_DEN_R |= 0x80;   // 7) enable digital I/O on PD3-0 
 }
 
 void Delay(void){unsigned long volatile time;
